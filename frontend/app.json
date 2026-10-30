@@ -4,11 +4,13 @@
     "slug": "hisab-khata",
     "scheme": "hisabkhata",
     "owner": "mdaniali",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#16a34a"
     },
     "ios": {
@@ -22,6 +24,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.hisabkhata.app",
+      "versionCode": 2,
       "predictiveBackGestureEnabled": false
     },
     "web": {
