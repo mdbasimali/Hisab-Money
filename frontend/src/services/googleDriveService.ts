@@ -465,7 +465,9 @@ export class GoogleDriveBackupService {
         });
       } else {
         GoogleSignin.configure({
-          webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+          webClientId:
+            process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB ||
+            '439116612452-oqhlfsp47m53i2gercoq340q789gfdkc.apps.googleusercontent.com',
           scopes: [DRIVE_FILE_SCOPE],
           offlineAccess: false,
         });
@@ -639,7 +641,9 @@ export class GoogleDriveBackupService {
     if (!GoogleSignin) return;
     try {
       GoogleSignin.configure({
-        webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+        webClientId:
+          process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB ||
+          '439116612452-oqhlfsp47m53i2gercoq340q789gfdkc.apps.googleusercontent.com',
         offlineAccess: false,
       });
     } catch (e) {

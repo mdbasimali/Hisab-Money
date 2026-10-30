@@ -20,8 +20,13 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://hisab-money.onrender.com",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB": "439116612452-oqhlfsp47m53i2gercoq340q789gfdkc.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID": "439116612452-6g4hv9r3fm92trff9l9g2kouq144s5ft.apps.googleusercontent.com"
       }
-    },
+    }
   },
   "submit": {
     "production": {}

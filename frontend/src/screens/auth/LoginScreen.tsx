@@ -54,7 +54,9 @@ export function LoginScreen({ onLogin }: Props) {
   const [firstDriveModalVisible, setFirstDriveModalVisible] = React.useState(false);
   const [driveSetupLoading, setDriveSetupLoading] = React.useState(false);
 
-  const googleClientIdWeb = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
+  const googleClientIdWeb =
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB ||
+    '439116612452-oqhlfsp47m53i2gercoq340q789gfdkc.apps.googleusercontent.com';
 
   React.useEffect(() => {
     // Check existing persisted consent
