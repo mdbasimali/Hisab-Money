@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Hisab Money",
+    "slug": "hisab-khata",
+    "scheme": "hisabkhata",
+    "owner": "mdaniali",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#16a34a"
+    },
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.hisabkhata.app",
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "@react-native-community/datetimepicker",
+      "expo-secure-store",
+      "expo-web-browser",
+      "@react-native-google-signin/google-signin",
+      "expo-sharing"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "21b520f5-2bf8-4c9b-8321-baf9d51b95aa"
+      }
+    }
+  }
+}
