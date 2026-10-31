@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { SmsModal } from '../../components/common/SmsModal';
+import { CustomerPdfModal } from '../../components/customer/CustomerPdfModal';
 import { useAppTheme } from '../../context/ThemeContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CustomerDetails'>;
@@ -86,6 +88,7 @@ export function CustomerDetailsScreen({ route }: Props) {
   };
 
   const [smsModalVisible, setSmsModalVisible] = useState(false);
+  const [pdfModalVisible, setPdfModalVisible] = useState(false);
 
   const handleSendSMS = () => {
     if (!customer) return;
@@ -142,6 +145,15 @@ export function CustomerDetailsScreen({ route }: Props) {
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{t('customers.customerDetailsTitle')}</Text>
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => setPdfModalVisible(true)}
+            style={styles.headerBtn}
+            activeOpacity={0.65}
+            hitSlop={6}
+            accessibilityLabel="Download PDF Report"
+          >
+            <Ionicons name="document-text-outline" size={22} color={COLORS.white} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('EditCustomer', { customerId: customer.id })} style={styles.headerBtn} activeOpacity={0.65} hitSlop={6}>
             <Ionicons name="create-outline" size={22} color={COLORS.white} />
           </TouchableOpacity>
@@ -279,6 +291,35 @@ export function CustomerDetailsScreen({ route }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Download PDF Ledger Report Action */}
+        <View style={styles.pdfActionContainer}>
+          <TouchableOpacity
+            style={[
+              styles.pdfActionBtn,
+              {
+                backgroundColor: colors.surfaceCard,
+                borderColor: colors.border,
+                borderWidth: isDark ? 1 : StyleSheet.hairlineWidth,
+              },
+            ]}
+            onPress={() => setPdfModalVisible(true)}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.pdfIconCircle, { backgroundColor: isDark ? '#064e3b' : '#dcfce7' }]}>
+              <Ionicons name="document-text" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.pdfTextContainer}>
+              <Text style={[styles.pdfActionTitle, { color: colors.textPrimary }]}>
+                {t('customers.downloadPdfReport', 'Download PDF Report')}
+              </Text>
+              <Text style={[styles.pdfActionSubtitle, { color: colors.textSecondary }]}>
+                {t('customers.downloadPdfSubtitle', 'Official ledger statement with date filters & running balance')}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+
         {/* Transaction History */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t('customers.paymentCreditHistory')}</Text>
@@ -308,6 +349,15 @@ export function CustomerDetailsScreen({ route }: Props) {
           phoneNumber={customer.phone}
           outstandingBalanceRupees={customer.balance}
           initialType="REMINDER"
+        />
+      )}
+
+      {customer && (
+        <CustomerPdfModal
+          visible={pdfModalVisible}
+          onClose={() => setPdfModalVisible(false)}
+          customer={customer}
+          transactions={transactions}
         />
       )}
     </SafeAreaView>
@@ -516,6 +566,47 @@ const styles = StyleSheet.create({
   smsActionText: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.textMuted,
+  },
+  pdfActionContainer: {
+    paddingHorizontal: SPACING[4],
+    marginTop: SPACING[3],
+  },
+  pdfActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING[2] + 2,
+    paddingHorizontal: SPACING[3],
+    borderRadius: RADIUS.lg,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  pdfIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING[3],
+  },
+  pdfTextContainer: {
+    flex: 1,
+  },
+  pdfActionTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  pdfActionSubtitle: {
+    fontSize: FONT_SIZES.xs - 1,
+    marginTop: 1,
   },
   sectionHeader: {
     flexDirection: 'row',
