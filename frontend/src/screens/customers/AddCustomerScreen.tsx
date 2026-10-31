@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -161,6 +161,7 @@ function DueFieldsBox({
 export function AddCustomerScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'AddCustomer'>>();
   const { colors, isDark } = useAppTheme();
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -177,6 +178,9 @@ export function AddCustomerScreen() {
   const todayStr = today.toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState<Date>(today);
 
+  const initialName = route.params?.initialName || '';
+  const initialPhone = route.params?.initialPhone || '';
+
   const {
     control,
     handleSubmit,
@@ -188,8 +192,8 @@ export function AddCustomerScreen() {
     reValidateMode: 'onChange',
     shouldFocusError: false, // Prevents sudden focus jumping to errors while typing
     defaultValues: {
-      name: '',
-      phone: '',
+      name: initialName,
+      phone: initialPhone,
       address: '',
       openingBalance: '', // Empty initially per specification (no default 0)
       initialDueReason: '',
@@ -211,13 +215,42 @@ export function AddCustomerScreen() {
     if (loading) return;
     setLoading(true);
     try {
+      const trimmedPhone = data.phone.trim();
+      if (trimmedPhone) {
+        const existing = await AppDataService.getCustomerByPhone(trimmedPhone);
+        if (existing) {
+          Alert.alert(
+            t('customers.duplicateCustomerTitle', 'Customer Already Exists'),
+            t('customers.duplicateCustomerMsg', {
+              defaultValue: `A customer named "${existing.name}" is already registered with this phone number (+91 ${trimmedPhone}).`,
+              name: existing.name,
+              phone: trimmedPhone,
+            }),
+            [
+              {
+                text: t('customers.viewCustomer', 'View Customer'),
+                onPress: () => {
+                  navigation.replace('CustomerDetails', { customerId: existing.id });
+                },
+              },
+              {
+                text: t('common.cancel', 'Cancel'),
+                style: 'cancel',
+              },
+            ]
+          );
+          setLoading(false);
+          return;
+        }
+      }
+
       const openingBalancePaise = rupeesToPaise(data.openingBalance || '0');
       const obNum = parseFloat(data.openingBalance || '0') || 0;
       const hasOpeningDue = obNum > 0;
 
       await AppDataService.addCustomer({
         name: data.name.trim(),
-        phone: data.phone.trim(),
+        phone: trimmedPhone,
         address: data.address.trim(),
         notes: data.notes?.trim() || '',
         openingBalancePaise,

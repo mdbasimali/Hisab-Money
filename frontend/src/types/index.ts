@@ -110,7 +110,7 @@ export interface PaymentMethod {
 export type RootStackParamList = {
   Login: undefined;
   MainTabs: { screen?: keyof MainTabParamList } | undefined;
-  AddCustomer: undefined;
+  AddCustomer: { initialName?: string; initialPhone?: string } | undefined;
   EditCustomer: { customerId: string };
   CustomerDetails: { customerId: string };
   RecordPayment: { customerId: string };

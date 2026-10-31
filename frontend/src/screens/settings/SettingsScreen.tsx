@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Linking,
   Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,6 +39,7 @@ import { BackupQueueService, BackupStatusInfo } from '../../services/backupQueue
 import { DailyBackupService } from '../../services/dailyBackupService';
 import { SyncService } from '../../services/syncService';
 import { PrivacyPolicyModal } from '../../components/common/PrivacyPolicyModal';
+import { ContactsService } from '../../services/contactsService';
 
 interface SettingRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -133,6 +135,7 @@ export function SettingsScreen({ onLogout }: { onLogout?: () => void }) {
   const [loadingDrive, setLoadingDrive] = useState(false);
   const [localBackupLoading, setLocalBackupLoading] = useState(false);
   const [localRestoreLoading, setLocalRestoreLoading] = useState(false);
+  const [contactsAllowed, setContactsAllowed] = useState(false);
 
   // ── Upload Confirmation & Live Progress Modal State ───────────────────────
   const [uploadConfirmVisible, setUploadConfirmVisible] = useState(false);
@@ -269,10 +272,57 @@ export function SettingsScreen({ onLogout }: { onLogout?: () => void }) {
       }
     })();
 
+    // Check Contacts permission status
+    ContactsService.checkPermission().then((status) => {
+      setContactsAllowed(status === 'granted');
+    }).catch(() => {});
+
     return () => {
       unsubscribeBackup();
     };
   }, []);
+
+  const handleContactsRowPress = async () => {
+    if (contactsAllowed) {
+      Alert.alert(
+        t('contacts.connectTitle', 'Phone Contacts'),
+        t('contacts.accessDesc', 'Contacts are accessed locally to help you quickly find and add customers without manual typing.'),
+        [
+          { text: t('common.ok', 'OK') },
+          {
+            text: t('contacts.openSettings', 'Open Settings'),
+            onPress: () => {
+              if (Platform.OS === 'android' || Platform.OS === 'ios') {
+                Linking.openSettings().catch(() => {});
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      const status = await ContactsService.requestPermission();
+      if (status === 'granted') {
+        setContactsAllowed(true);
+        Alert.alert(t('common.success', 'Success'), t('contacts.accessEnabled', 'Contacts access enabled.'));
+      } else {
+        Alert.alert(
+          t('contacts.permissionDeniedTitle', 'Permission Required'),
+          t('contacts.permissionDeniedMsg', 'Contacts access is disabled. Please enable it in Settings.'),
+          [
+            { text: t('common.cancel', 'Cancel'), style: 'cancel' },
+            {
+              text: t('contacts.openSettings', 'Open Settings'),
+              onPress: () => {
+                if (Platform.OS === 'android' || Platform.OS === 'ios') {
+                  Linking.openSettings().catch(() => {});
+                }
+              },
+            },
+          ]
+        );
+      }
+    }
+  };
 
   const saveReminderSettings = async (
     enabled: boolean,
@@ -834,6 +884,22 @@ export function SettingsScreen({ onLogout }: { onLogout?: () => void }) {
               badgeVariant={remindersEnabled ? 'success' : 'neutral'}
               colors={colors}
               onPress={() => setRemindersModalVisible(true)}
+            />
+            {/* Phone Contacts Row */}
+            <SettingRow
+              icon="people-outline"
+              iconBg={isDark ? '#064e3b' : '#dcfce7'}
+              iconColor="#16a34a"
+              title={t('contacts.connectTitle', 'Phone Contacts')}
+              subtitle={
+                contactsAllowed
+                  ? t('contacts.accessEnabled', 'Contacts Access Enabled')
+                  : t('contacts.accessDisabled', 'Contacts Access Disabled')
+              }
+              badge={contactsAllowed ? 'Active' : 'Off'}
+              badgeVariant={contactsAllowed ? 'success' : 'neutral'}
+              colors={colors}
+              onPress={handleContactsRowPress}
             />
           </View>
         </View>

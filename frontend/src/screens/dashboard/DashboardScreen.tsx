@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
+  Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +20,9 @@ import type { DashboardSummary, RootStackParamList } from '../../types';
 import { AppDataService } from '../../services/mockService';
 import { AuthService } from '../../services/authService';
 import { GoogleDriveBackupService } from '../../services/googleDriveService';
+import { ContactsService, ContactsPermissionStatus } from '../../services/contactsService';
+import { ContactsPermissionModal } from '../../components/contacts/ContactsPermissionModal';
+import { ContactSearchSection } from '../../components/contacts/ContactSearchSection';
 import { COLORS, FONT_SIZES, FONT_WEIGHTS, RADIUS, SPACING } from '../../constants/theme';
 import { formatINR } from '../../utils/formatters';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -35,6 +41,22 @@ export function DashboardScreen() {
     const cached = AuthService.getCachedUser();
     return cached?.name || AppDataService.getUser().name;
   });
+  const [permissionStatus, setPermissionStatus] = useState<ContactsPermissionStatus>('undetermined');
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+
+  const checkContactsPermissionAndOnboarding = useCallback(async () => {
+    try {
+      const status = await ContactsService.checkPermission();
+      setPermissionStatus(status);
+
+      const seen = await ContactsService.hasSeenOnboarding();
+      if (!seen) {
+        setShowOnboardingModal(true);
+      }
+    } catch (e) {
+      console.warn('[DashboardScreen] Contacts permission check error:', e);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -59,13 +81,60 @@ export function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+      checkContactsPermissionAndOnboarding();
+    }, [loadData, checkContactsPermissionAndOnboarding])
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadData();
-  }, [loadData]);
+    checkContactsPermissionAndOnboarding();
+  }, [loadData, checkContactsPermissionAndOnboarding]);
+
+  const handleAllowContacts = async () => {
+    setShowOnboardingModal(false);
+    await ContactsService.setOnboardingSeen(true);
+    const status = await ContactsService.requestPermission();
+    setPermissionStatus(status);
+  };
+
+  const handleMaybeLaterContacts = async () => {
+    setShowOnboardingModal(false);
+    await ContactsService.setOnboardingSeen(true);
+  };
+
+  const handleRequestPermissionFromSearch = async () => {
+    const status = await ContactsService.requestPermission();
+    setPermissionStatus(status);
+    if (status !== 'granted') {
+      Alert.alert(
+        t('contacts.permissionDeniedTitle', 'Permission Required'),
+        t('contacts.permissionDeniedMsg', 'Contacts access is disabled. Please enable it in Settings to search your phone contacts.'),
+        [
+          { text: t('common.cancel', 'Cancel'), style: 'cancel' },
+          {
+            text: t('contacts.openSettings', 'Open Settings'),
+            onPress: () => {
+              if (Platform.OS === 'android' || Platform.OS === 'ios') {
+                Linking.openSettings().catch(() => {});
+              }
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  const handleSelectContact = (name: string, phone: string) => {
+    navigation.navigate('AddCustomer', {
+      initialName: name,
+      initialPhone: phone,
+    });
+  };
+
+  const handleViewExistingCustomer = (customerId: string) => {
+    navigation.navigate('CustomerDetails', { customerId });
+  };
 
   const user = AppDataService.getUser();
 
@@ -117,6 +186,14 @@ export function DashboardScreen() {
             <Ionicons name="person-add" size={22} color={COLORS.white} />
           </TouchableOpacity>
         </View>
+
+        {/* Compact Customer Contact Search Bar (Immediately below greeting and above Total Outstanding) */}
+        <ContactSearchSection
+          permissionStatus={permissionStatus}
+          onRequestPermission={handleRequestPermissionFromSearch}
+          onSelectContact={handleSelectContact}
+          onViewExistingCustomer={handleViewExistingCustomer}
+        />
 
         {/* Cloud Backup Waiting for Drive Authorization Banner */}
         {!isDriveConnected && (
@@ -259,6 +336,13 @@ export function DashboardScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* First App Launch Contacts Permission Explanation Modal */}
+      <ContactsPermissionModal
+        visible={showOnboardingModal}
+        onAllow={handleAllowContacts}
+        onMaybeLater={handleMaybeLaterContacts}
+      />
     </SafeAreaView>
   );
 }

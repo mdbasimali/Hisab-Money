@@ -45,6 +45,10 @@ export class AppDataService {
     return CustomerRepository.getCustomerById(id);
   }
 
+  static async getCustomerByPhone(phone: string): Promise<Customer | null> {
+    return CustomerRepository.getCustomerByPhone(phone);
+  }
+
   static async addCustomer(params: {
     name: string;
     phone?: string;

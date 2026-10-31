@@ -265,6 +265,74 @@ export class CustomerRepository {
   }
 
   /**
+   * Find an active customer by phone number (checks last 10 digits and full string)
+   */
+  static async getCustomerByPhone(phone: string): Promise<Customer | null> {
+    const db = await getDatabase();
+    const trimmed = phone.trim();
+    if (!trimmed) return null;
+
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    const last10 = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+    if (!last10) return null;
+
+    let userFilter = '1=1';
+    let userParams: any[] = [];
+    try {
+      const { AuthService } = require('../services/authService');
+      const user = await AuthService.getUser();
+      if (user?.id) {
+        userFilter = '(c.user_id = ? OR c.user_id IS NULL)';
+        userParams.push(user.id);
+      }
+    } catch {}
+
+    const query = `
+      SELECT 
+        c.*,
+        COALESCE(p.total_paid_paise, 0) AS total_paid_paise,
+        COALESCE(d.total_new_dues_paise, 0) AS total_new_dues_paise,
+        (
+          SELECT status FROM sync_queue 
+          WHERE entity_id = c.id 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) AS sync_status,
+        (
+          SELECT MAX(COALESCE(txn_date, created_at))
+          FROM (
+            SELECT payment_date AS txn_date, created_at FROM payments WHERE customer_id = c.id
+            UNION ALL
+            SELECT 
+              CASE 
+                WHEN transaction_date LIKE '%T12:00:00%' THEN created_at 
+                ELSE COALESCE(transaction_date, created_at) 
+              END AS txn_date, 
+              created_at 
+            FROM due_transactions WHERE customer_id = c.id
+          )
+        ) AS last_transaction_at
+      FROM customers c
+      LEFT JOIN (
+        SELECT customer_id, SUM(amount_paise) AS total_paid_paise
+        FROM payments
+        GROUP BY customer_id
+      ) p ON p.customer_id = c.id
+      LEFT JOIN (
+        SELECT customer_id, SUM(amount_paise) AS total_new_dues_paise
+        FROM due_transactions
+        GROUP BY customer_id
+      ) d ON d.customer_id = c.id
+      WHERE c.is_archived = 0 AND (c.phone = ? OR c.phone LIKE ? OR c.phone LIKE ?) AND ${userFilter}
+      LIMIT 1;
+    `;
+
+    const row = await db.getFirstAsync<CustomerRow>(query, [trimmed, `%${last10}`, `%${last10}%`, ...userParams]);
+    if (!row) return null;
+    return this.mapRowToCustomer(row);
+  }
+
+  /**
    * Insert a new customer record.
    * Stores openingBalancePaise directly in customers.opening_balance_paise.
    * New dues in due_transactions represent only subsequent borrow transactions.

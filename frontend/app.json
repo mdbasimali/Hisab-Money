@@ -24,7 +24,8 @@
       },
       "package": "com.hisabkhata.app",
       "versionCode": 2,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": ["android.permission.WRITE_CONTACTS"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,7 +36,13 @@
       "expo-secure-store",
       "expo-web-browser",
       "@react-native-google-signin/google-signin",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow Hisab Money to access your contacts to easily find and add customers."
+        }
+      ]
     ],
     "extra": {
       "eas": {
