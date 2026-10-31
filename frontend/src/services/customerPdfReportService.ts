@@ -28,6 +28,7 @@ export interface CustomerLedgerRow {
   timeStr: string;
   typeLabel: string;
   isDue: boolean;
+  isOpening?: boolean;
   description: string;
   paymentMethod?: string;
   amountPaise: number;
@@ -92,8 +93,33 @@ export class CustomerPdfReportService {
       periodLabel = `${startStr} – ${endStr}`;
     }
 
-    // 2. Sort all transactions chronologically ascending (oldest first)
-    const sorted = [...transactions].sort(
+    // 2. Ensure customer opening balance transaction is included if customer has opening balance
+    const custOpeningPaise =
+      customer.openingBalancePaise ??
+      (customer.openingBalance ? Math.round(customer.openingBalance * 100) : 0);
+
+    const hasOpeningInTx = transactions.some((t) => t.subType === 'opening');
+
+    const allTransactions: Transaction[] = [...transactions];
+    if (!hasOpeningInTx && custOpeningPaise > 0) {
+      allTransactions.push({
+        id: `opening-${customer.id}`,
+        customerId: customer.id,
+        customerName: customer.name,
+        type: 'credit',
+        subType: 'opening',
+        amountPaise: custOpeningPaise,
+        amount: custOpeningPaise / 100,
+        balanceAfterPaise: custOpeningPaise,
+        balanceAfter: custOpeningPaise / 100,
+        reason: customer.initialDueReason || 'Opening Balance',
+        notes: customer.notes ? `Opening Balance: ${customer.notes}` : 'Opening Balance',
+        createdAt: customer.createdAt,
+      });
+    }
+
+    // 3. Sort all transactions chronologically ascending (oldest first)
+    const sorted = allTransactions.sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
 
@@ -107,6 +133,7 @@ export class CustomerPdfReportService {
       const tDate = new Date(t.createdAt);
       const tTime = tDate.getTime();
       const isDue = t.type === 'credit';
+      const isOpening = t.subType === 'opening';
       const amountPaise = t.amountPaise ?? Math.round((t.amount || 0) * 100);
 
       // Prior to period start
@@ -126,7 +153,10 @@ export class CustomerPdfReportService {
       }
 
       // Within period
-      if (isDue) {
+      if (isOpening) {
+        runningPaise += amountPaise;
+        periodOpeningPaise += amountPaise;
+      } else if (isDue) {
         runningPaise += amountPaise;
         periodDuesPaise += amountPaise;
       } else {
@@ -146,10 +176,10 @@ export class CustomerPdfReportService {
       });
 
       let typeLabel = isDue ? 'Due' : 'Payment';
-      if (t.subType === 'opening') {
+      if (isOpening) {
         typeLabel = 'Opening Balance';
       } else if (isDue) {
-        typeLabel = 'Due Added';
+        typeLabel = 'New Due';
       } else {
         typeLabel = 'Payment Received';
       }
@@ -160,7 +190,8 @@ export class CustomerPdfReportService {
         timeStr,
         typeLabel,
         isDue,
-        description: t.reason || t.notes || (isDue ? 'Due Transaction' : 'Payment'),
+        isOpening,
+        description: t.reason || t.notes || (isOpening ? 'Opening Balance' : isDue ? 'Due Transaction' : 'Payment'),
         paymentMethod: t.paymentMethod,
         amountPaise,
         runningBalancePaise: runningPaise,
@@ -243,7 +274,7 @@ export class CustomerPdfReportService {
               <div style="font-size: 10px; color: #64748b;">${r.timeStr}</div>
             </td>
             <td>
-              <span class="badge ${r.isDue ? 'badge-due' : 'badge-paid'}">${escapeHtml(r.typeLabel)}</span>
+              <span class="badge ${r.isOpening ? 'badge-opening' : (r.isDue ? 'badge-due' : 'badge-paid')}">${escapeHtml(r.typeLabel)}</span>
             </td>
             <td>
               <div style="font-size: 12px; font-weight: 500; color: #1e293b;">${escapeHtml(r.description)}</div>
@@ -435,6 +466,10 @@ export class CustomerPdfReportService {
             padding: 2px 6px;
             border-radius: 4px;
           }
+          .badge-opening {
+            background: #fef3c7;
+            color: #b45309;
+          }
           .badge-due {
             background: #ffedd5;
             color: #c2410c;
@@ -518,11 +553,11 @@ export class CustomerPdfReportService {
           <thead>
             <tr>
               <th style="width: 25px; text-align: center;">#</th>
-              <th style="width: 90px;">Date & Time</th>
-              <th style="width: 105px;">Type</th>
+              <th style="width: 85px;">Date & Time</th>
+              <th style="width: 100px;">Type</th>
               <th>Description / Reason</th>
               <th style="text-align: right; width: 85px;">Amount</th>
-              <th style="text-align: right; width: 95px;">Balance</th>
+              <th style="text-align: right; width: 125px; font-size: 9px; letter-spacing: 0.3px; white-space: nowrap;">TOTAL CURRENT BALANCE</th>
             </tr>
           </thead>
           <tbody>
@@ -536,8 +571,8 @@ export class CustomerPdfReportService {
               <td colspan="4" style="text-align: right; font-size: 11px; text-transform: uppercase;">
                 Period Statement Totals:
               </td>
-              <td style="text-align: right; font-size: 11px; color: ${isCleared ? '#16a34a' : '#ea580c'};">
-                ${isCleared ? 'Cleared' : `+₹${duesRupees}`}
+              <td style="text-align: right; font-size: 11px; color: ${periodDuesPaise > 0 ? '#ea580c' : '#64748b'};">
+                +₹${duesRupees}
               </td>
               <td style="text-align: right; font-size: 12px; color: ${isCleared ? '#16a34a' : '#dc2626'};">
                 ₹${closingRupees}
