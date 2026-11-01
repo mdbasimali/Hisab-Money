@@ -12,6 +12,7 @@ import {
   Linking,
   Image,
   Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import { AppDataService } from '../../services/mockService';
 import { COLORS, FONT_SIZES, FONT_WEIGHTS, RADIUS, SPACING } from '../../constants/theme';
 import { getInitials, formatDateTime } from '../../utils/formatters';
 import { Badge } from '../../components/common/Badge';
+import { Button } from '../../components/common/Button';
 import { SUPPORTED_LANGUAGES, setAppLanguage, SupportedLanguageCode } from '../../i18n';
 import { useAppTheme } from '../../context/ThemeContext';
 import { getDatabase } from '../../database/db';
@@ -123,6 +125,12 @@ export function SettingsScreen({ onLogout }: { onLogout?: () => void }) {
   const [dbStatus] = useState('Encrypted & Active');
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+
+  // Edit custom profile display name state
+  const [editNameModalVisible, setEditNameModalVisible] = useState(false);
+  const [customNameInput, setCustomNameInput] = useState('');
+  const [savingCustomName, setSavingCustomName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   // Reminders configuration modal state
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
@@ -352,9 +360,42 @@ export function SettingsScreen({ onLogout }: { onLogout?: () => void }) {
     }
   };
 
-  const displayName = authUser?.name || mockUser.name;
+  const displayName = authUser?.customName || authUser?.name || mockUser.name;
   const displayEmail = authUser?.email || mockUser.email;
   const avatarUrl = authUser?.avatarUrl || authUser?.picture || (authUser as any)?.photoUrl || (authUser as any)?.photo;
+
+  const handleOpenEditNameModal = () => {
+    setCustomNameInput(displayName);
+    setNameError(null);
+    setEditNameModalVisible(true);
+  };
+
+  const handleSaveCustomName = async () => {
+    const trimmed = customNameInput.trim();
+    if (!trimmed) {
+      setNameError(t('settings.nameRequired', 'Display name cannot be empty'));
+      return;
+    }
+    if (trimmed.length > 40) {
+      setNameError(t('settings.nameTooLong', 'Display name must not exceed 40 characters'));
+      return;
+    }
+    setSavingCustomName(true);
+    setNameError(null);
+    try {
+      await AuthService.setCustomName(trimmed);
+      const updated = await AuthService.getUser();
+      if (updated) {
+        setAuthUser(updated);
+      }
+      setEditNameModalVisible(false);
+    } catch (e) {
+      console.warn('[SettingsScreen] Failed to save custom name:', e);
+      Alert.alert(t('common.error'), 'Failed to save display name.');
+    } finally {
+      setSavingCustomName(false);
+    }
+  };
 
   const currentLangObj =
     SUPPORTED_LANGUAGES.find((l) => l.code === i18n.language) || SUPPORTED_LANGUAGES[0];
@@ -784,9 +825,27 @@ export function SettingsScreen({ onLogout }: { onLogout?: () => void }) {
           </View>
           <View style={styles.profileInfo}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <Text style={[styles.profileName, { color: colors.textPrimary }]} numberOfLines={1}>
-                {displayName}
-              </Text>
+              <TouchableOpacity
+                onPress={handleOpenEditNameModal}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '78%' }}
+                accessibilityLabel={t('settings.editProfileName', 'Edit Profile Name')}
+              >
+                <Text style={[styles.profileName, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {displayName}
+                </Text>
+                <View
+                  style={[
+                    styles.editPencilBadge,
+                    {
+                      backgroundColor: isDark ? '#1e293b' : '#ecfdf5',
+                      borderColor: isDark ? '#334155' : '#a7f3d0',
+                    },
+                  ]}
+                >
+                  <Ionicons name="pencil" size={12} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
               {authUser && <Badge label="Google" variant="success" dot />}
             </View>
             {displayEmail ? (
@@ -2593,6 +2652,137 @@ export function SettingsScreen({ onLogout }: { onLogout?: () => void }) {
         visible={privacyModalVisible}
         onClose={() => setPrivacyModalVisible(false)}
       />
+
+      {/* Edit Profile Name Modal */}
+      <Modal
+        visible={editNameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditNameModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.editNameModalCard,
+              { backgroundColor: colors.surfaceCard, borderColor: colors.border },
+            ]}
+          >
+            <View style={[styles.editNameHeader, { borderBottomColor: colors.borderLight }]}>
+              <View
+                style={[
+                  styles.editNameIconWrap,
+                  { backgroundColor: isDark ? '#064e3b' : '#dcfce7' },
+                ]}
+              >
+                <Ionicons name="person-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.editNameTitle, { color: colors.textPrimary }]}>
+                  {t('settings.editProfileName', 'Edit Profile Name')}
+                </Text>
+                <Text style={[styles.editNameSubtitle, { color: colors.textSecondary }]}>
+                  {t('settings.enterDisplayName', 'Enter Display Name')}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setEditNameModalVisible(false)}
+                hitSlop={8}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close-circle" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.editNameBody}>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                {t('settings.enterDisplayName', 'Enter Display Name')} *
+              </Text>
+
+              <View
+                style={[
+                  styles.textInputWrap,
+                  {
+                    backgroundColor: isDark ? colors.surface : '#f8fafc',
+                    borderColor: nameError ? colors.danger : colors.border,
+                  },
+                ]}
+              >
+                <TextInput
+                  value={customNameInput}
+                  onChangeText={(val) => {
+                    setCustomNameInput(val);
+                    if (nameError) setNameError(null);
+                  }}
+                  placeholder={t('settings.profileNamePlaceholder', 'e.g. Ani Store or Your Name')}
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={40}
+                  autoCapitalize="words"
+                  autoFocus
+                  style={[styles.textInput, { color: colors.textPrimary }]}
+                />
+                {customNameInput.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setCustomNameInput('')}
+                    hitSlop={6}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={styles.inputMetaRow}>
+                {nameError ? (
+                  <Text style={[styles.inputErrorText, { color: colors.danger }]}>{nameError}</Text>
+                ) : (
+                  <Text style={[styles.helperText, { color: colors.textMuted }]}>
+                    Max 40 characters
+                  </Text>
+                )}
+                <Text style={[styles.charCountText, { color: colors.textMuted }]}>
+                  {customNameInput.length}/40
+                </Text>
+              </View>
+
+              {authUser?.name ? (
+                <View
+                  style={[
+                    styles.googleHintBox,
+                    {
+                      backgroundColor: isDark ? colors.surface : '#f8fafc',
+                      borderColor: colors.borderLight,
+                    },
+                  ]}
+                >
+                  <Ionicons name="logo-google" size={14} color="#ea4335" style={{ marginRight: 6 }} />
+                  <Text style={[styles.googleHintText, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {t('settings.googleAccountNote', { name: authUser.name, defaultValue: `Connected Google Account: ${authUser.name}` })}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={[styles.editNameFooter, { borderTopColor: colors.borderLight }]}>
+              <Button
+                title={t('common.cancel', 'Cancel')}
+                onPress={() => setEditNameModalVisible(false)}
+                variant="outline"
+                size="md"
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <Button
+                title={t('common.save', 'Save')}
+                onPress={handleSaveCustomName}
+                variant="primary"
+                size="md"
+                loading={savingCustomName}
+                disabled={savingCustomName}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2663,6 +2853,112 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  editPencilBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editNameModalCard: {
+    width: '90%',
+    maxWidth: 420,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    padding: SPACING[4],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  editNameHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: SPACING[3],
+    borderBottomWidth: 1,
+    marginBottom: SPACING[3],
+  },
+  editNameIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING[3],
+  },
+  editNameTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  editNameSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    marginTop: 2,
+  },
+  editNameBody: {
+    paddingVertical: SPACING[2],
+  },
+  inputLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  textInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING[3],
+    height: 48,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.medium,
+    paddingVertical: 0,
+  },
+  inputMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: SPACING[2],
+  },
+  inputErrorText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.medium,
+    flex: 1,
+  },
+  helperText: {
+    fontSize: FONT_SIZES.xs,
+    flex: 1,
+  },
+  charCountText: {
+    fontSize: FONT_SIZES.xs,
+    marginLeft: 8,
+  },
+  googleHintBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING[3],
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    marginTop: SPACING[2],
+  },
+  googleHintText: {
+    fontSize: FONT_SIZES.xs,
+    flex: 1,
+  },
+  editNameFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: SPACING[3],
+    borderTopWidth: 1,
+    marginTop: SPACING[3],
   },
   dbStatusCard: {
     flexDirection: 'row',

@@ -489,6 +489,80 @@ export class CustomerPdfReportService {
             border-radius: 3px;
             margin-top: 2px;
           }
+          .account-summary-wrap {
+            page-break-inside: avoid;
+            margin-top: 20px;
+            margin-bottom: 14px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #ffffff;
+          }
+          .account-summary-title {
+            background: #f8fafc;
+            border-bottom: 1.5px solid #cbd5e1;
+            padding: 10px 14px;
+            font-size: 12px;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+          }
+          .account-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 0;
+          }
+          .account-summary-table th {
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 8px 14px;
+            border-bottom: 1px solid #cbd5e1;
+          }
+          .account-summary-table td {
+            padding: 9px 14px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 12px;
+          }
+          .row-current-balance {
+            background: #f0fdf4 !important;
+            border-top: 1.5px solid #86efac;
+          }
+          .row-current-balance td {
+            border-bottom: none !important;
+            padding: 11px 14px;
+          }
+          .status-summary-bar {
+            page-break-inside: avoid;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 18px;
+          }
+          .status-bar-cleared {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+          }
+          .status-bar-pending {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+          }
+          .status-message {
+            font-size: 12px;
+            font-weight: 700;
+          }
+          .status-bar-cleared .status-message {
+            color: #15803d;
+          }
+          .status-bar-pending .status-message {
+            color: #b91c1c;
+          }
           .footer {
             margin-top: 24px;
             padding-top: 8px;
@@ -566,20 +640,50 @@ export class CustomerPdfReportService {
               `<tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 24px;">No transactions recorded for the selected period.</td></tr>`
             }
           </tbody>
-          <tfoot>
-            <tr style="background: #f1f5f9; font-weight: 700;">
-              <td colspan="4" style="text-align: right; font-size: 11px; text-transform: uppercase;">
-                Period Statement Totals:
-              </td>
-              <td style="text-align: right; font-size: 11px; color: ${periodDuesPaise > 0 ? '#ea580c' : '#64748b'};">
-                +₹${duesRupees}
-              </td>
-              <td style="text-align: right; font-size: 12px; color: ${isCleared ? '#16a34a' : '#dc2626'};">
-                ₹${closingRupees}
-              </td>
-            </tr>
-          </tfoot>
         </table>
+
+        <!-- Section 5: ACCOUNT SUMMARY -->
+        <div class="account-summary-wrap">
+          <div class="account-summary-title">ACCOUNT SUMMARY</div>
+          <table class="account-summary-table">
+            <thead>
+              <tr>
+                <th style="text-align: left; width: 65%;">Particulars</th>
+                <th style="text-align: right; width: 35%;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="color: #0f172a; font-weight: 600;">Opening Balance</td>
+                <td style="text-align: right; color: #0f172a; font-weight: 700;">₹${openingRupees}</td>
+              </tr>
+              <tr>
+                <td style="color: #0f172a; font-weight: 600;">Total New Dues</td>
+                <td style="text-align: right; color: #ea580c; font-weight: 700;">+₹${duesRupees}</td>
+              </tr>
+              <tr>
+                <td style="color: #0f172a; font-weight: 600;">Total Payments Received</td>
+                <td style="text-align: right; color: #16a34a; font-weight: 700;">-₹${paidRupees}</td>
+              </tr>
+              <tr class="row-current-balance">
+                <td style="color: #0f172a; font-weight: 800; font-size: 13px;">Current Balance</td>
+                <td style="text-align: right; color: ${isCleared ? '#15803d' : '#0f172a'}; font-weight: 800; font-size: 13px;">
+                  ₹${closingRupees}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 6: ALL CLEARED / DUE PENDING Status -->
+        <div class="status-summary-bar ${isCleared ? 'status-bar-cleared' : 'status-bar-pending'}">
+          <div class="status-badge ${isCleared ? 'status-cleared' : 'status-pending'}">
+            ${isCleared ? '✓ ALL CLEARED' : '⚠ DUE PENDING'}
+          </div>
+          <div class="status-message">
+            ${isCleared ? '₹0.00 - No pending payment' : `Outstanding balance of ₹${closingRupees} is pending`}
+          </div>
+        </div>
 
         <!-- Footer -->
         <div class="footer">

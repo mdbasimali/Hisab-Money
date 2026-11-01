@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { getDatabase } from '../database/db';
 
 const TOKEN_KEY = 'hisab_khata_auth_token';
 const USER_KEY = 'hisab_khata_auth_user';
@@ -13,6 +14,7 @@ export interface AuthUser {
   avatarUrl?: string;
   picture?: string;
   photoUrl?: string;
+  customName?: string;
 }
 
 export class AuthService {
@@ -67,9 +69,14 @@ export class AuthService {
    * Save user profile
    */
   static async setUser(user: AuthUser): Promise<void> {
-    this.cachedUser = user;
+    const customName = user.customName || this.cachedUser?.customName;
+    const mergedUser: AuthUser = {
+      ...user,
+      ...(customName ? { customName } : {}),
+    };
+    this.cachedUser = mergedUser;
     try {
-      const serialized = JSON.stringify(user);
+      const serialized = JSON.stringify(mergedUser);
       if (Platform.OS === 'web') {
         localStorage.setItem(USER_KEY, serialized);
       } else {
@@ -81,10 +88,84 @@ export class AuthService {
   }
 
   /**
+   * Helper to fetch persisted custom profile name from SQLite app_settings
+   */
+  private static async getCustomNameFromDb(): Promise<string | null> {
+    try {
+      const db = await getDatabase();
+      const row = await db.getFirstAsync<{ value: string }>(
+        'SELECT value FROM app_settings WHERE key = ?;',
+        ['custom_profile_name']
+      );
+      return row?.value ? row.value.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Retrieve custom profile name
+   */
+  static async getCustomName(): Promise<string | null> {
+    if (this.cachedUser?.customName) return this.cachedUser.customName;
+    return await this.getCustomNameFromDb();
+  }
+
+  /**
+   * Set custom display name locally in SQLite and SecureStore
+   */
+  static async setCustomName(customName: string | null): Promise<void> {
+    const trimmed = customName ? customName.trim() : '';
+
+    // 1. Persist to SQLite app_settings
+    try {
+      const db = await getDatabase();
+      if (trimmed) {
+        await db.runAsync(
+          `INSERT INTO app_settings (key, value, updated_at) VALUES ('custom_profile_name', ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;`,
+          [trimmed, new Date().toISOString()]
+        );
+      } else {
+        await db.runAsync("DELETE FROM app_settings WHERE key = 'custom_profile_name';");
+      }
+    } catch (e) {
+      console.warn('[AuthService] Error persisting custom name to SQLite:', e);
+    }
+
+    // 2. Update cached and stored AuthUser
+    try {
+      const user = await this.getUser();
+      if (user) {
+        const updated: AuthUser = {
+          ...user,
+          customName: trimmed || undefined,
+        };
+        await this.setUser(updated);
+      } else if (trimmed) {
+        this.cachedUser = {
+          id: 'local_user',
+          name: 'Google User',
+          email: '',
+          customName: trimmed,
+        };
+      }
+    } catch (e) {
+      console.warn('[AuthService] Error updating user in storage:', e);
+    }
+  }
+
+  /**
    * Retrieve user profile
    */
   static async getUser(): Promise<AuthUser | null> {
-    if (this.cachedUser) return this.cachedUser;
+    if (this.cachedUser) {
+      if (!this.cachedUser.customName) {
+        const custom = await this.getCustomNameFromDb();
+        if (custom) this.cachedUser.customName = custom;
+      }
+      return this.cachedUser;
+    }
 
     try {
       let raw: string | null = null;
@@ -96,6 +177,12 @@ export class AuthService {
 
       if (raw) {
         this.cachedUser = JSON.parse(raw);
+        if (this.cachedUser && !this.cachedUser.customName) {
+          const custom = await this.getCustomNameFromDb();
+          if (custom && this.cachedUser) {
+            this.cachedUser.customName = custom;
+          }
+        }
         return this.cachedUser;
       }
       return null;

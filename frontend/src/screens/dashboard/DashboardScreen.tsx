@@ -39,7 +39,7 @@ export function DashboardScreen() {
   const [isDriveConnected, setIsDriveConnected] = useState<boolean>(true);
   const [userName, setUserName] = useState<string>(() => {
     const cached = AuthService.getCachedUser();
-    return cached?.name || AppDataService.getUser().name;
+    return cached?.customName || cached?.name || AppDataService.getUser().name;
   });
   const [permissionStatus, setPermissionStatus] = useState<ContactsPermissionStatus>('undetermined');
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
@@ -64,8 +64,10 @@ export function DashboardScreen() {
       setSummary(data);
 
       const authUser = await AuthService.getUser();
-      if (authUser?.name) {
-        setUserName(authUser.name);
+      const customName = await AuthService.getCustomName();
+      const effectiveName = customName || authUser?.customName || authUser?.name;
+      if (effectiveName) {
+        setUserName(effectiveName);
       }
 
       const connected = await GoogleDriveBackupService.isDriveConnected();

@@ -62,7 +62,6 @@ function generateCustomerReportHtml(data, businessName = 'Hisab Money') {
           margin: 14mm 12mm 14mm 12mm;
         }
         thead { display: table-header-group; }
-        tfoot { display: table-footer-group; }
         tr { page-break-inside: avoid; }
         .badge-opening { background: #fef3c7; color: #b45309; }
         .badge-due { background: #ffedd5; color: #c2410c; }
@@ -86,14 +85,50 @@ function generateCustomerReportHtml(data, businessName = 'Hisab Money') {
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
-        <tfoot>
-          <tr>
-            <td colspan="4">Period Statement Totals:</td>
-            <td>+₹${duesRupees}</td>
-            <td>₹${closingRupees}</td>
-          </tr>
-        </tfoot>
       </table>
+
+      <!-- Section 5: ACCOUNT SUMMARY -->
+      <div class="account-summary-wrap">
+        <div class="account-summary-title">ACCOUNT SUMMARY</div>
+        <table class="account-summary-table">
+          <thead>
+            <tr>
+              <th style="text-align: left; width: 65%;">Particulars</th>
+              <th style="text-align: right; width: 35%;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color: #0f172a; font-weight: 600;">Opening Balance</td>
+              <td style="text-align: right; color: #0f172a; font-weight: 700;">₹${openingRupees}</td>
+            </tr>
+            <tr>
+              <td style="color: #0f172a; font-weight: 600;">Total New Dues</td>
+              <td style="text-align: right; color: #ea580c; font-weight: 700;">+₹${duesRupees}</td>
+            </tr>
+            <tr>
+              <td style="color: #0f172a; font-weight: 600;">Total Payments Received</td>
+              <td style="text-align: right; color: #16a34a; font-weight: 700;">-₹${paidRupees}</td>
+            </tr>
+            <tr class="row-current-balance">
+              <td style="color: #0f172a; font-weight: 800; font-size: 13px;">Current Balance</td>
+              <td style="text-align: right; color: ${isCleared ? '#15803d' : '#0f172a'}; font-weight: 800; font-size: 13px;">
+                ₹${closingRupees}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section 6: ALL CLEARED / DUE PENDING Status -->
+      <div class="status-summary-bar ${isCleared ? 'status-bar-cleared' : 'status-bar-pending'}">
+        <div class="status-badge ${isCleared ? 'status-cleared' : 'status-pending'}">
+          ${isCleared ? '✓ ALL CLEARED' : '⚠ DUE PENDING'}
+        </div>
+        <div class="status-message">
+          ${isCleared ? '₹0.00 - No pending payment' : `Outstanding balance of ₹${closingRupees} is pending`}
+        </div>
+      </div>
     </body>
     </html>
   `;
@@ -248,71 +283,7 @@ describe('Customer-wise PDF Ledger Report Tests', () => {
     createdAt: '2026-10-31T09:00:00.000Z',
   };
 
-  it('1. Opening Balance only: reports Opening Balance ₹2000, New Dues ₹0, Payments ₹0, Closing ₹2000', () => {
-    const data = processLedgerData(mockCustomerWithOB, [], { filter: 'all' });
-
-    assert.equal(data.periodOpeningPaise, 200000, 'Opening Balance must be ₹2,000');
-    assert.equal(data.periodDuesPaise, 0, 'Total New Dues must be ₹0');
-    assert.equal(data.periodPaidPaise, 0, 'Total Payments must be ₹0');
-    assert.equal(data.closingBalancePaise, 200000, 'Closing balance must be ₹2,000');
-    assert.equal(data.isCleared, false);
-    assert.equal(data.rows.length, 1);
-    assert.equal(data.rows[0].typeLabel, 'Opening Balance');
-    assert.equal(data.rows[0].amountPaise, 200000);
-    assert.equal(data.rows[0].runningBalancePaise, 200000);
-  });
-
-  it('2. Normal New Due only: reports Opening Balance ₹0, New Dues ₹2000, Payments ₹0, Closing ₹2000', () => {
-    const duesOnly = [
-      {
-        id: 'due-1',
-        customerId: 'c-102',
-        type: 'credit',
-        subType: 'new_due',
-        amountPaise: 200000, // ₹2,000
-        reason: 'Monthly Milk supply',
-        createdAt: '2026-10-31T10:00:00.000Z',
-      },
-    ];
-
-    const data = processLedgerData(mockCustomerZeroOB, duesOnly, { filter: 'all' });
-
-    assert.equal(data.periodOpeningPaise, 0, 'Opening Balance must be ₹0');
-    assert.equal(data.periodDuesPaise, 200000, 'Total New Dues must be ₹2,000');
-    assert.equal(data.periodPaidPaise, 0, 'Total Payments must be ₹0');
-    assert.equal(data.closingBalancePaise, 200000, 'Closing balance must be ₹2,000');
-    assert.equal(data.rows.length, 1);
-    assert.equal(data.rows[0].typeLabel, 'New Due');
-    assert.equal(data.rows[0].amountPaise, 200000);
-    assert.equal(data.rows[0].runningBalancePaise, 200000);
-  });
-
-  it('3. Opening Balance + New Due: distinguishes Opening Balance from New Dues', () => {
-    const txns = [
-      {
-        id: 'due-new',
-        customerId: 'c-101',
-        type: 'credit',
-        subType: 'new_due',
-        amountPaise: 50000, // ₹500 new due
-        reason: 'Extra goods',
-        createdAt: '2026-10-31T11:00:00.000Z',
-      },
-    ];
-
-    const data = processLedgerData(mockCustomerWithOB, txns, { filter: 'all' });
-
-    assert.equal(data.periodOpeningPaise, 200000, 'Opening Balance must be ₹2,000');
-    assert.equal(data.periodDuesPaise, 50000, 'New Dues must be ₹500 (not mixed with opening)');
-    assert.equal(data.closingBalancePaise, 250000, 'Total closing balance must be ₹2,500');
-    assert.equal(data.rows.length, 2);
-    assert.equal(data.rows[0].typeLabel, 'Opening Balance');
-    assert.equal(data.rows[0].runningBalancePaise, 200000);
-    assert.equal(data.rows[1].typeLabel, 'New Due');
-    assert.equal(data.rows[1].runningBalancePaise, 250000);
-  });
-
-  it('4. Opening Balance + Partial Payment (User screenshot case): Opening ₹2000, New Dues ₹0, Payments ₹1000, Closing ₹1000', () => {
+  it('Test A – Opening Balance and Partial Payment: Opening ₹2,000, New Dues ₹0, Payments ₹1,000, Current Balance ₹1,000, Status DUE PENDING', () => {
     const txns = [
       {
         id: 'opening-c-101',
@@ -340,70 +311,138 @@ describe('Customer-wise PDF Ledger Report Tests', () => {
     const data = processLedgerData(mockCustomerWithOB, txns, { filter: 'all' });
 
     assert.equal(data.periodOpeningPaise, 200000, 'Opening Balance must be ₹2,000');
-    assert.equal(data.periodDuesPaise, 0, 'Total New Dues must be ₹0 (NEVER ₹2,000)');
-    assert.equal(data.periodPaidPaise, 100000, 'Total Payments must be ₹1,000');
-    assert.equal(data.closingBalancePaise, 100000, 'Outstanding Due must be ₹1,000');
-    assert.equal(data.isCleared, false);
-    assert.equal(data.rows.length, 2);
-    assert.equal(data.rows[0].typeLabel, 'Opening Balance');
-    assert.equal(data.rows[0].runningBalancePaise, 200000);
-    assert.equal(data.rows[1].typeLabel, 'Payment Received');
-    assert.equal(data.rows[1].runningBalancePaise, 100000);
+    assert.equal(data.periodDuesPaise, 0, 'Total New Dues must be ₹0');
+    assert.equal(data.periodPaidPaise, 100000, 'Total Payments Received must be ₹1,000');
+    assert.equal(data.closingBalancePaise, 100000, 'Current Balance must be ₹1,000');
+    assert.equal(data.isCleared, false, 'Status must be DUE PENDING');
+
+    const html = generateCustomerReportHtml(data);
+    assert.match(html, /ACCOUNT SUMMARY/, 'Must have ACCOUNT SUMMARY section');
+    assert.match(html, /Opening Balance[\s\S]*?₹2,000\.00/, 'Account summary must have Opening Balance ₹2,000.00');
+    assert.match(html, /Total New Dues[\s\S]*?\+₹0\.00/, 'Account summary must have Total New Dues +₹0.00');
+    assert.match(html, /Total Payments Received[\s\S]*?-₹1,000\.00/, 'Account summary must have Total Payments Received -₹1,000.00');
+    assert.match(html, /Current Balance[\s\S]*?₹1,000\.00/, 'Account summary must have Current Balance ₹1,000.00');
+    assert.match(html, /⚠ DUE PENDING/, 'Must show DUE PENDING badge');
   });
 
-  it('5. Multiple payments: correctly aggregates partial CASH and UPI payments', () => {
-    const multiPayments = [
+  it('Test B – Opening Balance + New Due + Payment: Opening ₹1,000, New Dues ₹2,000, Payments ₹1,000, Current Balance ₹2,000, Status DUE PENDING', () => {
+    const cust1000 = {
+      ...mockCustomerZeroOB,
+      id: 'c-103',
+      name: 'Priya Das',
+      openingBalancePaise: 100000, // ₹1,000
+    };
+
+    const txns = [
       {
-        id: 'pay-cash',
-        customerId: 'c-101',
-        type: 'payment',
-        subType: 'payment',
-        amountPaise: 50000, // ₹500
-        paymentMethod: 'CASH',
+        id: 'opening-c-103',
+        customerId: 'c-103',
+        type: 'credit',
+        subType: 'opening',
+        amountPaise: 100000,
+        amount: 1000,
+        reason: 'Opening Balance',
+        createdAt: '2026-10-31T09:00:00.000Z',
+      },
+      {
+        id: 'due-b',
+        customerId: 'c-103',
+        type: 'credit',
+        subType: 'new_due',
+        amountPaise: 200000, // ₹2,000 new due
+        amount: 2000,
+        reason: 'Goods order',
         createdAt: '2026-10-31T10:00:00.000Z',
       },
       {
-        id: 'pay-upi',
-        customerId: 'c-101',
+        id: 'pay-b',
+        customerId: 'c-103',
         type: 'payment',
         subType: 'payment',
-        amountPaise: 70000, // ₹700
-        paymentMethod: 'UPI',
+        amountPaise: 100000, // ₹1,000 payment
+        amount: 1000,
+        paymentMethod: 'CASH',
+        reason: 'Partial cash payment',
         createdAt: '2026-10-31T11:00:00.000Z',
       },
     ];
 
-    const data = processLedgerData(mockCustomerWithOB, multiPayments, { filter: 'all' });
+    const data = processLedgerData(cust1000, txns, { filter: 'all' });
 
-    assert.equal(data.periodOpeningPaise, 200000);
-    assert.equal(data.periodDuesPaise, 0);
-    assert.equal(data.periodPaidPaise, 120000); // ₹1,200 total paid
-    assert.equal(data.closingBalancePaise, 80000); // ₹800 remaining
-    assert.equal(data.rows.length, 3);
-    assert.equal(data.rows[1].paymentMethod, 'CASH');
-    assert.equal(data.rows[2].paymentMethod, 'UPI');
+    assert.equal(data.periodOpeningPaise, 100000, 'Opening Balance must be ₹1,000');
+    assert.equal(data.periodDuesPaise, 200000, 'Total New Dues must be ₹2,000');
+    assert.equal(data.periodPaidPaise, 100000, 'Total Payments Received must be ₹1,000');
+    assert.equal(data.closingBalancePaise, 200000, 'Current Balance must be ₹2,000 (1000 + 2000 - 1000)');
+    assert.equal(data.isCleared, false, 'Status must be DUE PENDING');
+
+    const html = generateCustomerReportHtml(data);
+    assert.match(html, /Opening Balance[\s\S]*?₹1,000\.00/);
+    assert.match(html, /Total New Dues[\s\S]*?\+₹2,000\.00/);
+    assert.match(html, /Total Payments Received[\s\S]*?-₹1,000\.00/);
+    assert.match(html, /Current Balance[\s\S]*?₹2,000\.00/);
+    assert.match(html, /⚠ DUE PENDING/);
   });
 
-  it('6. Fully cleared customer: flags status as All Cleared when closing balance is 0', () => {
-    const fullPay = [
+  it('Test C – Fully Cleared: Opening ₹1,000, New Dues ₹500, Payments ₹1,500, Current Balance ₹0, Status ALL CLEARED and "₹0.00 - No pending payment"', () => {
+    const cust1000 = {
+      ...mockCustomerZeroOB,
+      id: 'c-104',
+      name: 'Sunil Verma',
+      openingBalancePaise: 100000, // ₹1,000
+    };
+
+    const txns = [
       {
-        id: 'pay-full',
-        customerId: 'c-101',
+        id: 'opening-c-104',
+        customerId: 'c-104',
+        type: 'credit',
+        subType: 'opening',
+        amountPaise: 100000,
+        amount: 1000,
+        reason: 'Opening Balance',
+        createdAt: '2026-10-31T09:00:00.000Z',
+      },
+      {
+        id: 'due-c',
+        customerId: 'c-104',
+        type: 'credit',
+        subType: 'new_due',
+        amountPaise: 50000, // ₹500 new due
+        amount: 500,
+        reason: 'Stationery',
+        createdAt: '2026-10-31T10:00:00.000Z',
+      },
+      {
+        id: 'pay-c',
+        customerId: 'c-104',
         type: 'payment',
         subType: 'payment',
-        amountPaise: 200000, // ₹2,000
-        createdAt: '2026-10-31T12:00:00.000Z',
+        amountPaise: 150000, // ₹1,500 payment
+        amount: 1500,
+        paymentMethod: 'UPI',
+        reason: 'Full settlement',
+        createdAt: '2026-10-31T11:00:00.000Z',
       },
     ];
 
-    const data = processLedgerData(mockCustomerWithOB, fullPay, { filter: 'all' });
+    const data = processLedgerData(cust1000, txns, { filter: 'all' });
 
-    assert.equal(data.closingBalancePaise, 0);
-    assert.equal(data.isCleared, true, 'isCleared must be true when balance reaches zero');
-    assert.equal(data.rows[1].runningBalancePaise, 0);
+    assert.equal(data.periodOpeningPaise, 100000, 'Opening Balance must be ₹1,000');
+    assert.equal(data.periodDuesPaise, 50000, 'Total New Dues must be ₹500');
+    assert.equal(data.periodPaidPaise, 150000, 'Total Payments Received must be ₹1,500');
+    assert.equal(data.closingBalancePaise, 0, 'Current Balance must be ₹0');
+    assert.equal(data.isCleared, true, 'Status must be ALL CLEARED');
+
+    const html = generateCustomerReportHtml(data);
+    assert.match(html, /Opening Balance[\s\S]*?₹1,000\.00/);
+    assert.match(html, /Total New Dues[\s\S]*?\+₹500\.00/);
+    assert.match(html, /Total Payments Received[\s\S]*?-₹1,500\.00/);
+    assert.match(html, /Current Balance[\s\S]*?₹0\.00/);
+    assert.match(html, /✓ ALL CLEARED/);
+    assert.match(html, /₹0\.00 - No pending payment/, 'Must display ₹0.00 - No pending payment');
   });
 
-  it('7. All Time and Custom Date Range reports: correctly handles prior balances without double counting', () => {
+  it('Verifies All Time and Custom Date Range calculations', () => {
     const multiDateTxns = [
       { id: 't-sep-due', type: 'credit', subType: 'new_due', amountPaise: 40000, createdAt: '2026-09-10T10:00:00.000Z' },
       { id: 't-sep-pay', type: 'payment', subType: 'payment', amountPaise: 10000, createdAt: '2026-09-15T10:00:00.000Z' },
@@ -423,7 +462,7 @@ describe('Customer-wise PDF Ledger Report Tests', () => {
     assert.equal(data.rows.length, 1);
   });
 
-  it('8. Correct running balance in every transaction row', () => {
+  it('Verifies correct running balance in every transaction row', () => {
     const sequentialTxns = [
       { id: 'tx-1', type: 'credit', subType: 'new_due', amountPaise: 10000, createdAt: '2026-10-01T10:00:00.000Z' },
       { id: 'tx-2', type: 'credit', subType: 'new_due', amountPaise: 20000, createdAt: '2026-10-02T10:00:00.000Z' },
@@ -440,19 +479,19 @@ describe('Customer-wise PDF Ledger Report Tests', () => {
     assert.equal(data.closingBalancePaise, 20000);
   });
 
-  it('9. TOTAL CURRENT BALANCE heading visibility and layout in generated HTML', () => {
+  it('Verifies HTML layout structure, table headers, and absence of legacy period summary', () => {
     const data = processLedgerData(mockCustomerWithOB, [], { filter: 'all' });
     const html = generateCustomerReportHtml(data, 'Hisab Money');
 
-    // Ensure the new column heading exists and old heading is updated
     assert.match(html, /TOTAL CURRENT BALANCE/, 'Must contain renamed heading TOTAL CURRENT BALANCE');
-    assert.match(html, /@page\s*\{\s*size:\s*A4 portrait;/i, 'Must define A4 portrait page size');
-    assert.match(html, /thead\s*\{\s*display:\s*table-header-group;\s*\}/i, 'Must repeat table headers across pages');
-    assert.match(html, /tr\s*\{\s*page-break-inside:\s*avoid;\s*\}/i, 'Must avoid breaking rows across pages');
-    assert.match(html, /badge-opening/, 'Must include styling class for opening balance badge');
+    assert.match(html, /ACCOUNT SUMMARY/, 'Must contain ACCOUNT SUMMARY table');
+    assert.doesNotMatch(html, /Period Statement Totals/, 'Must remove legacy Period Statement Totals footer');
+    assert.doesNotMatch(html, /Net Period Transactions/, 'Must not have Net Period Transactions');
+    assert.match(html, /Particulars/, 'Account summary must have Particulars header');
+    assert.match(html, /Amount/, 'Account summary must have Amount header');
   });
 
-  it('10. Handles multilingual text (Bengali, Hindi, English) with UTF-8 support', () => {
+  it('Handles multilingual text (Bengali, Hindi, English) with UTF-8 support', () => {
     const multilingualCust = {
       id: 'c-multi',
       name: 'অনিতা শর্মা (अनिता शर्मा)',
@@ -483,7 +522,7 @@ describe('Customer-wise PDF Ledger Report Tests', () => {
     assert.match(html, /दवा खरीद/, 'Must render Hindi description');
   });
 
-  it('11. Supports long histories with 100+ transactions without overflow or calculation drift', () => {
+  it('Supports long histories with 100+ transactions without overflow or calculation drift', () => {
     const largeTxns = [];
     let expectedPaise = 0;
 
