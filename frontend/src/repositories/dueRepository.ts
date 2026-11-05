@@ -21,6 +21,13 @@ export interface CreateDueParams {
   notes?: string;
 }
 
+export interface UpdateDueParams {
+  id: string;
+  amountPaise: number;
+  reason?: string;
+  notes?: string;
+}
+
 export class DueRepository {
   /**
    * Record a new due linked to a customer in a SQLite transaction.
@@ -106,6 +113,98 @@ export class DueRepository {
       throw new Error('Failed to retrieve created due transaction');
     }
     return created;
+  }
+
+  /**
+   * Update an existing due transaction safely in a SQLite transaction.
+   * Preserves original ID, creation timestamp, and re-calculates balances.
+   */
+  static async updateDue(params: UpdateDueParams): Promise<DueTransaction> {
+    const db = await getDatabase();
+    const amountPaise = Math.round(params.amountPaise);
+
+    if (amountPaise <= 0) {
+      throw new Error('Due amount must be greater than zero');
+    }
+
+    // 1. Fetch existing due transaction
+    const existing = await db.getFirstAsync<DueTransactionRow & { user_id?: string | null }>(
+      'SELECT * FROM due_transactions WHERE id = ?;',
+      [params.id]
+    );
+
+    if (!existing) {
+      throw new Error('Due transaction not found');
+    }
+
+    // Verify user ownership if user is logged in
+    let currentUserId: string | null = null;
+    try {
+      const { AuthService } = require('../services/authService');
+      const user = await AuthService.getUser();
+      if (user?.id) currentUserId = user.id;
+    } catch {}
+
+    if (currentUserId && existing.user_id && existing.user_id !== currentUserId) {
+      throw new Error('Unauthorized to edit this transaction');
+    }
+
+    // Determine final reason and notes
+    // Reason is optional: if left empty or unmodified, preserve existing reason
+    const finalReason =
+      params.reason !== undefined && params.reason.trim() !== ''
+        ? params.reason.trim()
+        : existing.reason;
+
+    const finalNotes =
+      params.notes !== undefined
+        ? params.notes.trim() || null
+        : existing.notes;
+
+    const now = new Date().toISOString();
+
+    await db.withTransactionAsync(async () => {
+      // 2. Update due_transactions record preserving original id, created_at, and customer_id
+      await db.runAsync(
+        `UPDATE due_transactions
+         SET amount_paise = ?, reason = ?, notes = ?
+         WHERE id = ?;`,
+        [amountPaise, finalReason, finalNotes, params.id]
+      );
+
+      // 3. Update customer updated_at timestamp
+      await db.runAsync('UPDATE customers SET updated_at = ? WHERE id = ?;', [
+        now,
+        existing.customer_id,
+      ]);
+    });
+
+    // 4. Enqueue synchronization with operation UPDATE
+    try {
+      const { SyncService } = require('../services/syncService');
+      await SyncService.enqueue('due', params.id, 'UPDATE', {
+        customerId: existing.customer_id,
+        clientTransactionId: params.id,
+        amountPaise,
+        reason: finalReason,
+        notes: finalNotes || '',
+        transactionDate: existing.transaction_date,
+      });
+    } catch (syncErr) {
+      console.warn('[DueRepository] Failed to enqueue due update sync:', syncErr);
+    }
+
+    // 5. Trigger always-on automatic cloud backup
+    try {
+      const { BackupQueueService } = require('../services/backupQueueService');
+      BackupQueueService.triggerAutoBackup('due_updated');
+    } catch {}
+
+    const updated = await this.getDueById(params.id);
+    if (!updated) {
+      throw new Error('Failed to retrieve updated due transaction');
+    }
+    return updated;
   }
 
   static async getDueById(id: string): Promise<DueTransaction | null> {

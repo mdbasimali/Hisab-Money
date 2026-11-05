@@ -70,9 +70,13 @@ export function TransactionHistoryScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: Transaction }) => (
-      <TransactionItem transaction={item} showCustomerName />
+      <TransactionItem
+        transaction={item}
+        showCustomerName
+        onTransactionUpdated={loadTransactions}
+      />
     ),
-    []
+    [loadTransactions]
   );
 
   const keyExtractor = useCallback((item: Transaction) => item.id, []);

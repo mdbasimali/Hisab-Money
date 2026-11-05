@@ -1,4 +1,15 @@
-import { Linking, Platform } from 'react-native';
+let Linking: any = null;
+let Platform: any = { OS: 'android' };
+try {
+  const RN = require('react-native');
+  Linking = RN.Linking;
+  Platform = RN.Platform;
+} catch (e) {
+  Linking = {
+    openURL: async () => {},
+    canOpenURL: async () => true,
+  };
+}
 
 let ExpoSMS: any = null;
 try {
@@ -72,6 +83,50 @@ export class SmsService {
       default:
         return `Hello ${params.customerName}, your balance is ${formattedBalance}. Thank you. — Hisab Money`;
     }
+  }
+
+  /**
+   * Build automatic message for ANY transaction dynamically.
+   * Automatically detects transaction type (Payment vs Due/Credit/Opening/Other),
+   * populates customer name, selected transaction amount, and latest outstanding balance.
+   */
+  static buildMessageForTransaction(params: {
+    customerName: string;
+    outstandingBalanceRupees: number;
+    transaction?: any | null;
+  }): string {
+    if (!params.transaction) {
+      return this.buildMessage({
+        type: 'REMINDER',
+        customerName: params.customerName,
+        outstandingBalanceRupees: params.outstandingBalanceRupees,
+      });
+    }
+
+    const tx = params.transaction;
+    const amountRupees =
+      tx.amount !== undefined
+        ? tx.amount
+        : tx.amountPaise !== undefined
+        ? tx.amountPaise / 100
+        : 0;
+
+    if (tx.type === 'payment') {
+      return this.buildMessage({
+        type: 'PAYMENT_RECEIVED',
+        customerName: params.customerName,
+        outstandingBalanceRupees: params.outstandingBalanceRupees,
+        transactionAmountRupees: amountRupees,
+      });
+    }
+
+    // Default for credit, new_due, opening balance, or any other transaction
+    return this.buildMessage({
+      type: 'DUE_ADDED',
+      customerName: params.customerName,
+      outstandingBalanceRupees: params.outstandingBalanceRupees,
+      transactionAmountRupees: amountRupees,
+    });
   }
 
   /**

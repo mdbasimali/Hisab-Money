@@ -829,6 +829,167 @@ console.log('--- Running First-Login Google Drive Connection Tests ---');
   assertEqual(dashCode.includes("Connect Google Drive"), true, 'First-Login Test 8: Provides action button to connect Google Drive');
 }
 
-console.log('All financial scenario, payment timestamp, dialog localization, SMS modal, Dark Mode, Privacy Policy consent, Google Profile, Hisab Money Branding, Final Backup System, Critical Data Recovery, and First-Login Google Drive Connection tests passed successfully!');
+// ── 12. Edit Due Transaction Feature Tests ──────────────────────────────────
+console.log('--- Running Edit Due Transaction Feature Tests ---');
+{
+  const fs = require('fs');
+  const dueRepoCode = fs.readFileSync('./src/repositories/dueRepository.ts', 'utf8');
+  assertEqual(dueRepoCode.includes('static async updateDue(params: UpdateDueParams): Promise<DueTransaction>'), true, 'Edit Due Test 1: DueRepository defines updateDue');
+  assertEqual(dueRepoCode.includes('amountPaise <= 0'), true, 'Edit Due Test 1: DueRepository validates amountPaise > 0');
+  assertEqual(dueRepoCode.includes('UPDATE due_transactions'), true, 'Edit Due Test 1: DueRepository updates existing transaction instead of creating new');
+  assertEqual(dueRepoCode.includes("UPDATE customers SET updated_at = ?"), true, 'Edit Due Test 1: DueRepository touches customer updated_at');
+  assertEqual(dueRepoCode.includes("SyncService.enqueue('due', params.id, 'UPDATE'"), true, 'Edit Due Test 1: DueRepository enqueues UPDATE operation in sync queue');
+  assertEqual(dueRepoCode.includes("BackupQueueService.triggerAutoBackup('due_updated')"), true, 'Edit Due Test 1: DueRepository triggers auto cloud backup');
+
+  const mockServiceCode = fs.readFileSync('./src/services/mockService.ts', 'utf8');
+  assertEqual(mockServiceCode.includes('static async updateDue(params: {'), true, 'Edit Due Test 2: AppDataService defines updateDue');
+
+  const editModalCode = fs.readFileSync('./src/components/customer/EditDueModal.tsx', 'utf8');
+  assertEqual(editModalCode.includes('export function EditDueModal('), true, 'Edit Due Test 3: EditDueModal component defined');
+  assertEqual(editModalCode.includes('Math.round(parsed * 100)'), true, 'Edit Due Test 3: EditDueModal computes integer paise');
+  assertEqual(editModalCode.includes('KeyboardAvoidingView'), true, 'Edit Due Test 3: EditDueModal uses KeyboardAvoidingView');
+  assertEqual(editModalCode.includes('Confirm Transaction Update'), true, 'Edit Due Test 3: EditDueModal provides confirmation step before updating');
+  assertEqual(editModalCode.includes('Previous Amount'), true, 'Edit Due Test 3: Confirmation displays Previous Amount');
+  assertEqual(editModalCode.includes('New Amount'), true, 'Edit Due Test 3: Confirmation displays New Amount');
+  assertEqual(editModalCode.includes('Updated Reason'), true, 'Edit Due Test 3: Confirmation displays Updated Reason');
+
+  const txItemCode = fs.readFileSync('./src/components/customer/TransactionItem.tsx', 'utf8');
+  assertEqual(txItemCode.includes('isNewDue ? ('), true, 'Edit Due Test 4: TransactionItem conditionally renders Edit Due only for eligible new dues');
+  assertEqual(txItemCode.includes('!transaction.id.startsWith(\'opening-\')'), true, 'Edit Due Test 4: Opening balance excluded from Edit Due');
+  assertEqual(txItemCode.includes('<EditDueModal'), true, 'Edit Due Test 4: TransactionItem renders EditDueModal');
+  assertEqual(txItemCode.includes('onTransactionUpdated?.();'), true, 'Edit Due Test 4: TransactionItem triggers onTransactionUpdated callback');
+
+  const custDetailsCode = fs.readFileSync('./src/screens/customers/CustomerDetailsScreen.tsx', 'utf8');
+  assertEqual(custDetailsCode.includes('onTransactionUpdated={loadCustomer}'), true, 'Edit Due Test 5: CustomerDetailsScreen passes loadCustomer to recompute balances');
+
+  const txHistoryCode = fs.readFileSync('./src/screens/transactions/TransactionHistoryScreen.tsx', 'utf8');
+  assertEqual(txHistoryCode.includes('onTransactionUpdated={loadTransactions}'), true, 'Edit Due Test 6: TransactionHistoryScreen passes loadTransactions to refresh history');
+
+  // Verify translations
+  const enLocale = require('./src/i18n/locales/en.ts').default;
+  const hiLocale = require('./src/i18n/locales/hi.ts').default;
+  const bnLocale = require('./src/i18n/locales/bn.ts').default;
+
+  assertEqual(typeof enLocale.editDue?.title, 'string', 'Edit Due Test 7: EN editDue.title defined');
+  assertEqual(typeof enLocale.editDue?.confirmTitle, 'string', 'Edit Due Test 7: EN editDue.confirmTitle defined');
+  assertEqual(typeof hiLocale.editDue?.title, 'string', 'Edit Due Test 7: HI editDue.title defined');
+  assertEqual(typeof bnLocale.editDue?.title, 'string', 'Edit Due Test 7: BN editDue.title defined');
+}
+
+// ── 13. Universal Transaction-Based Send SMS Tests ──────────────────────────
+console.log('--- Running Universal Transaction-Based Send SMS Tests ---');
+{
+  const fs = require('fs');
+  const { SmsService } = require('./src/services/smsService.ts');
+
+  // Test 1: New Due transaction SMS generation
+  const dueTx = {
+    id: 'due-101',
+    customerId: 'c-1',
+    type: 'credit',
+    subType: 'new_due',
+    amount: 200,
+    amountPaise: 20000,
+    reason: 'Groceries',
+  };
+  const dueMsg = SmsService.buildMessageForTransaction({
+    customerName: 'Basim',
+    outstandingBalanceRupees: 800,
+    transaction: dueTx,
+  });
+  assertEqual(
+    dueMsg,
+    'Hello Basim, ₹200.00 has been added to your account. Your current outstanding balance is ₹800.00. Please contact us if you have any questions. — Hisab Money',
+    'Universal SMS Test 1: New Due message matches exact wording'
+  );
+
+  // Test 2: Payment Received transaction SMS generation
+  const paymentTx = {
+    id: 'pay-101',
+    customerId: 'c-1',
+    type: 'payment',
+    subType: 'payment',
+    amount: 150,
+    amountPaise: 15000,
+    paymentMethod: 'cash',
+  };
+  const payMsg = SmsService.buildMessageForTransaction({
+    customerName: 'Basim',
+    outstandingBalanceRupees: 650,
+    transaction: paymentTx,
+  });
+  assertEqual(
+    payMsg,
+    'Hello Basim, we received your payment of ₹150.00. Your updated outstanding balance is ₹650.00. Thank you. — Hisab Money',
+    'Universal SMS Test 2: Payment Received message matches exact wording'
+  );
+
+  // Test 3: Opening Balance transaction SMS generation
+  const openingTx = {
+    id: 'opening-c-1',
+    customerId: 'c-1',
+    type: 'credit',
+    subType: 'opening',
+    amount: 500,
+    amountPaise: 50000,
+    reason: 'Opening Balance',
+  };
+  const openingMsg = SmsService.buildMessageForTransaction({
+    customerName: 'Basim',
+    outstandingBalanceRupees: 500,
+    transaction: openingTx,
+  });
+  assertEqual(
+    openingMsg.includes('₹500.00 has been added to your account'),
+    true,
+    'Universal SMS Test 3: Opening Balance transaction supported'
+  );
+
+  // Test 4: Correct transaction amount
+  assertEqual(dueMsg.includes('₹200.00'), true, 'Universal SMS Test 4: Correct due amount');
+  assertEqual(payMsg.includes('₹150.00'), true, 'Universal SMS Test 4: Correct payment amount');
+
+  // Test 5: Correct customer name and phone sanitizer
+  assertEqual(dueMsg.includes('Hello Basim'), true, 'Universal SMS Test 5: Customer name in greeting');
+  const phoneCheck = SmsService.sanitizePhoneNumber('+91 98765-43210');
+  assertEqual(phoneCheck.valid, true, 'Universal SMS Test 5: Sanitizer validates phone');
+  assertEqual(phoneCheck.formatted, '+919876543210', 'Universal SMS Test 5: Sanitizer removes spaces and dashes');
+
+  // Test 6: Latest outstanding balance
+  assertEqual(dueMsg.includes('outstanding balance is ₹800.00'), true, 'Universal SMS Test 6: Due message includes latest balance');
+  assertEqual(payMsg.includes('outstanding balance is ₹650.00'), true, 'Universal SMS Test 6: Payment message includes latest balance');
+
+  // Test 7: Existing message wording remains unchanged with branding
+  assertEqual(dueMsg.endsWith('— Hisab Money'), true, 'Universal SMS Test 7: Due message preserves branding');
+  assertEqual(payMsg.endsWith('— Hisab Money'), true, 'Universal SMS Test 7: Payment message preserves branding');
+
+  // Test 8: No template selection UI in SmsModal.tsx
+  const smsModalCode = fs.readFileSync('./src/components/common/SmsModal.tsx', 'utf8');
+  assertEqual(smsModalCode.includes('CHOOSE TEMPLATE'), false, 'Universal SMS Test 8: Template selector title removed');
+  assertEqual(smsModalCode.includes('Payment Reminder'), false, 'Universal SMS Test 8: Template reminder chip removed');
+  assertEqual(smsModalCode.includes('handleSelectType'), false, 'Universal SMS Test 8: Manual template selector handler removed');
+  assertEqual(smsModalCode.includes('pillsScroll'), false, 'Universal SMS Test 8: Template pills container removed');
+
+  // Test 9: Message editing works in SmsModal.tsx
+  assertEqual(smsModalCode.includes('onChangeText={setMessageText}'), true, 'Universal SMS Test 9: TextInput allows editing message');
+  assertEqual(smsModalCode.includes('MESSAGE PREVIEW & EDIT'), true, 'Universal SMS Test 9: Preview & Edit label present');
+
+  // Test 10: Default SMS app composer integration
+  const smsServiceCode = fs.readFileSync('./src/services/smsService.ts', 'utf8');
+  assertEqual(smsServiceCode.includes('openSmsComposer'), true, 'Universal SMS Test 10: openSmsComposer defined');
+  assertEqual(smsModalCode.includes('Open SMS App'), true, 'Universal SMS Test 10: Open SMS App button present');
+
+  // Test 11: TransactionItem exposes Send SMS on ANY transaction
+  const txItemCode = fs.readFileSync('./src/components/customer/TransactionItem.tsx', 'utf8');
+  assertEqual(txItemCode.includes('onSendSms ? ('), true, 'Universal SMS Test 11: TransactionItem renders Send SMS for transactions');
+  assertEqual(txItemCode.includes('onSendSms(transaction)'), true, 'Universal SMS Test 11: Invokes onSendSms with exact transaction');
+
+  // Test 12: CustomerDetailsScreen wires Send SMS
+  const custDetailsCode = fs.readFileSync('./src/screens/customers/CustomerDetailsScreen.tsx', 'utf8');
+  assertEqual(custDetailsCode.includes('onSendSms={handleOpenSmsForTransaction}'), true, 'Universal SMS Test 12: CustomerDetailsScreen connects onSendSms');
+  assertEqual(custDetailsCode.includes('setSelectedSmsTx(tx)'), true, 'Universal SMS Test 12: CustomerDetailsScreen tracks selected transaction for SMS');
+}
+
+console.log('All financial scenario, payment timestamp, dialog localization, SMS modal, Dark Mode, Privacy Policy consent, Google Profile, Hisab Money Branding, Final Backup System, Critical Data Recovery, First-Login Google Drive Connection, Edit Due Transaction, and Universal Transaction-Based Send SMS tests passed successfully!');
 
 

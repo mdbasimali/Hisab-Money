@@ -88,6 +88,7 @@ export function CustomerDetailsScreen({ route }: Props) {
   };
 
   const [smsModalVisible, setSmsModalVisible] = useState(false);
+  const [selectedSmsTx, setSelectedSmsTx] = useState<Transaction | null>(null);
   const [pdfModalVisible, setPdfModalVisible] = useState(false);
 
   const handleSendSMS = () => {
@@ -106,6 +107,28 @@ export function CustomerDetailsScreen({ route }: Props) {
       );
       return;
     }
+    // Automatically use the latest transaction if available
+    setSelectedSmsTx(transactions.length > 0 ? transactions[0] : null);
+    setSmsModalVisible(true);
+  };
+
+  const handleOpenSmsForTransaction = (tx: Transaction) => {
+    if (!customer) return;
+    if (!customer.phone) {
+      Alert.alert(
+        'Missing Phone Number',
+        'This customer does not have a phone number saved. Please tap "Edit Profile" to add a mobile number before sending an SMS.',
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: 'Edit Profile',
+            onPress: () => navigation.navigate('EditCustomer', { customerId: customer.id }),
+          },
+        ]
+      );
+      return;
+    }
+    setSelectedSmsTx(tx);
     setSmsModalVisible(true);
   };
 
@@ -333,7 +356,12 @@ export function CustomerDetailsScreen({ route }: Props) {
             <Text style={[styles.noTx, { color: colors.textMuted }]}>{t('customers.noHistoryTitle')}</Text>
           ) : (
             transactions.map((tx) => (
-              <TransactionItem key={tx.id} transaction={tx} />
+              <TransactionItem
+                key={tx.id}
+                transaction={tx}
+                onTransactionUpdated={loadCustomer}
+                onSendSms={handleOpenSmsForTransaction}
+              />
             ))
           )}
         </View>
@@ -344,11 +372,14 @@ export function CustomerDetailsScreen({ route }: Props) {
       {customer && (
         <SmsModal
           visible={smsModalVisible}
-          onClose={() => setSmsModalVisible(false)}
+          onClose={() => {
+            setSmsModalVisible(false);
+            setSelectedSmsTx(null);
+          }}
           customerName={customer.name}
           phoneNumber={customer.phone}
           outstandingBalanceRupees={customer.balance}
-          initialType="REMINDER"
+          transaction={selectedSmsTx}
         />
       )}
 

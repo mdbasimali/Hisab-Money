@@ -12,23 +12,32 @@ import {
 } from '../../constants/theme';
 import { formatINR, formatDateTime } from '../../utils/formatters';
 import { useAppTheme } from '../../context/ThemeContext';
+import { EditDueModal } from './EditDueModal';
 
 interface TransactionItemProps {
   transaction: Transaction;
   showCustomerName?: boolean;
+  onTransactionUpdated?: () => void;
+  onSendSms?: (transaction: Transaction) => void;
 }
 
 export const TransactionItem = memo(function TransactionItem({
   transaction,
   showCustomerName = false,
+  onTransactionUpdated,
+  onSendSms,
 }: TransactionItemProps) {
   const { t, i18n } = useTranslation();
   const { isDark, colors } = useAppTheme();
   const [detailsVisible, setDetailsVisible] = useState(false);
+  const [editDueVisible, setEditDueVisible] = useState(false);
 
   const isPayment = transaction.type === 'payment';
-  const isOpening = transaction.subType === 'opening';
-  const isNewDue = transaction.subType === 'new_due';
+  const isOpening = transaction.subType === 'opening' || transaction.id.startsWith('opening-');
+  const isNewDue =
+    transaction.subType === 'new_due' &&
+    transaction.type === 'credit' &&
+    !transaction.id.startsWith('opening-');
 
   // Label configuration
   let label = 'Credit Given';
@@ -191,17 +200,89 @@ export const TransactionItem = memo(function TransactionItem({
                 </View>
               </View>
 
-              <TouchableOpacity
-                style={[styles.doneBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setDetailsVisible(false)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.doneBtnText}>{t('common.done')}</Text>
-              </TouchableOpacity>
+              {/* Universal Send SMS Action for ANY Transaction */}
+              {onSendSms ? (
+                <TouchableOpacity
+                  style={[
+                    styles.sendSmsActionBtn,
+                    {
+                      borderColor: colors.primary,
+                      backgroundColor: isDark ? colors.surfaceCard : '#f0fdf4',
+                    },
+                  ]}
+                  onPress={() => {
+                    setDetailsVisible(false);
+                    onSendSms(transaction);
+                  }}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.sendSms', 'Send SMS')}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.sendSmsActionBtnText, { color: colors.primary }]}>
+                    {t('common.sendSms', 'Send SMS')}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {isNewDue ? (
+                <View style={styles.modalFooterActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.editDueBtn,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: isDark ? colors.surface : '#f8fafc',
+                      },
+                    ]}
+                    onPress={() => {
+                      setDetailsVisible(false);
+                      setEditDueVisible(true);
+                    }}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('history.editDueBtn', 'Edit Due')}
+                  >
+                    <Ionicons name="create-outline" size={18} color={colors.textPrimary} />
+                    <Text style={[styles.editDueBtnText, { color: colors.textPrimary }]}>
+                      {t('history.editDueBtn', 'Edit Due')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={{ width: 12 }} />
+
+                  <TouchableOpacity
+                    style={[styles.doneBtnHalf, { backgroundColor: colors.primary }]}
+                    onPress={() => setDetailsVisible(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.doneBtnText}>{t('common.done')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.doneBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => setDetailsVisible(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.doneBtnText}>{t('common.done')}</Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
           </View>
         </View>
       </Modal>
+
+      {/* Edit Due Transaction Modal */}
+      <EditDueModal
+        visible={editDueVisible}
+        transaction={transaction}
+        onClose={() => setEditDueVisible(false)}
+        onUpdated={() => {
+          setEditDueVisible(false);
+          onTransactionUpdated?.();
+        }}
+      />
     </>
   );
 });
@@ -372,16 +453,56 @@ const styles = StyleSheet.create({
     color: '#16a34a',
     fontWeight: FONT_WEIGHTS.semibold,
   },
+  sendSmsActionBtn: {
+    height: 48,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: SPACING[4],
+  },
+  sendSmsActionBtnText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
   doneBtn: {
     backgroundColor: '#16a34a',
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING[3],
     alignItems: 'center',
-    marginTop: SPACING[4],
+    marginTop: SPACING[3],
   },
   doneBtnText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.base,
     fontWeight: FONT_WEIGHTS.bold,
+  },
+  modalFooterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING[3],
+  },
+  editDueBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  editDueBtnText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  doneBtnHalf: {
+    flex: 1,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

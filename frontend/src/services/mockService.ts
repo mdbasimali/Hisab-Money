@@ -138,6 +138,15 @@ export class AppDataService {
     return due;
   }
 
+  static async updateDue(params: {
+    id: string;
+    amountPaise: number;
+    reason?: string;
+    notes?: string;
+  }): Promise<DueTransaction> {
+    return DueRepository.updateDue(params);
+  }
+
   static async getDuesByCustomer(customerId: string): Promise<DueTransaction[]> {
     return DueRepository.getDuesByCustomer(customerId);
   }

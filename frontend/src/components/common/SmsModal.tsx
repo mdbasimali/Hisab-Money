@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { COLORS, SPACING } from '../../constants/theme';
 import { SmsService, SmsTemplateType } from '../../services/smsService';
 import { useAppTheme } from '../../context/ThemeContext';
+import { formatINR } from '../../utils/formatters';
 
 interface SmsModalProps {
   visible: boolean;
@@ -29,6 +30,7 @@ interface SmsModalProps {
   customerName: string;
   phoneNumber?: string | null;
   outstandingBalanceRupees: number;
+  transaction?: any | null;
   initialType?: SmsTemplateType;
   transactionAmountRupees?: number;
 }
@@ -39,6 +41,7 @@ export const SmsModal: React.FC<SmsModalProps> = ({
   customerName,
   phoneNumber,
   outstandingBalanceRupees,
+  transaction,
   initialType = 'REMINDER',
   transactionAmountRupees,
 }) => {
@@ -50,7 +53,6 @@ export const SmsModal: React.FC<SmsModalProps> = ({
     ? Math.max(RNStatusBar.currentHeight || 0, insets.top || 0, 28)
     : Math.max(insets.top || 0, 20);
 
-  const [selectedType, setSelectedType] = useState<SmsTemplateType>(initialType);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -96,14 +98,19 @@ export const SmsModal: React.FC<SmsModalProps> = ({
 
   useEffect(() => {
     if (visible) {
-      setSelectedType(initialType);
-      const text = SmsService.buildMessage({
-        type: initialType,
-        customerName,
-        phoneNumber,
-        outstandingBalanceRupees,
-        transactionAmountRupees,
-      });
+      const text = transaction
+        ? SmsService.buildMessageForTransaction({
+            customerName,
+            outstandingBalanceRupees,
+            transaction,
+          })
+        : SmsService.buildMessage({
+            type: initialType,
+            customerName,
+            phoneNumber,
+            outstandingBalanceRupees,
+            transactionAmountRupees,
+          });
       setMessageText(text);
       setIsKeyboardVisible(false);
       setIsFocused(false);
@@ -111,21 +118,15 @@ export const SmsModal: React.FC<SmsModalProps> = ({
     } else {
       Keyboard.dismiss();
     }
-  }, [visible, initialType, customerName, phoneNumber, outstandingBalanceRupees, transactionAmountRupees]);
-
-  const handleSelectType = (type: SmsTemplateType) => {
-    setSelectedType(type);
-    if (type !== 'CUSTOM') {
-      const text = SmsService.buildMessage({
-        type,
-        customerName,
-        phoneNumber,
-        outstandingBalanceRupees,
-        transactionAmountRupees,
-      });
-      setMessageText(text);
-    }
-  };
+  }, [
+    visible,
+    transaction,
+    initialType,
+    customerName,
+    phoneNumber,
+    outstandingBalanceRupees,
+    transactionAmountRupees,
+  ]);
 
   const handleInputFocus = () => {
     isFocusedRef.current = true;
@@ -242,52 +243,7 @@ export const SmsModal: React.FC<SmsModalProps> = ({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="none"
           >
-            {/* Template Selector Pills */}
-            <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>CHOOSE TEMPLATE</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.pillsScroll}
-              keyboardShouldPersistTaps="handled"
-            >
-              <TouchableOpacity
-                style={[styles.pill, { backgroundColor: colors.surface, borderColor: colors.border }, selectedType === 'REMINDER' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                onPress={() => handleSelectType('REMINDER')}
-              >
-                <Text style={[styles.pillText, { color: colors.textSecondary }, selectedType === 'REMINDER' && styles.pillTextActive]}>
-                  Payment Reminder
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.pill, { backgroundColor: colors.surface, borderColor: colors.border }, selectedType === 'PAYMENT_RECEIVED' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                onPress={() => handleSelectType('PAYMENT_RECEIVED')}
-              >
-                <Text style={[styles.pillText, { color: colors.textSecondary }, selectedType === 'PAYMENT_RECEIVED' && styles.pillTextActive]}>
-                  Payment Received
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.pill, { backgroundColor: colors.surface, borderColor: colors.border }, selectedType === 'DUE_ADDED' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                onPress={() => handleSelectType('DUE_ADDED')}
-              >
-                <Text style={[styles.pillText, { color: colors.textSecondary }, selectedType === 'DUE_ADDED' && styles.pillTextActive]}>
-                  Due Added
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.pill, { backgroundColor: colors.surface, borderColor: colors.border }, selectedType === 'CUSTOM' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                onPress={() => handleSelectType('CUSTOM')}
-              >
-                <Text style={[styles.pillText, { color: colors.textSecondary }, selectedType === 'CUSTOM' && styles.pillTextActive]}>
-                  Custom
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-
-            {/* Recipient Details Card */}
+            {/* Recipient & Transaction Details Card */}
             <View style={[styles.recipientCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.cardRow}>
                 <Text style={[styles.cardLabel, { color: colors.textSecondary }]}>Recipient</Text>
@@ -299,6 +255,30 @@ export const SmsModal: React.FC<SmsModalProps> = ({
                   {phoneNumber || 'Not provided'}
                 </Text>
               </View>
+
+              {transaction ? (
+                <>
+                  <View style={styles.cardRow}>
+                    <Text style={[styles.cardLabel, { color: colors.textSecondary }]}>Selected Transaction</Text>
+                    <Text style={[styles.cardValue, { color: transaction.type === 'payment' ? colors.primary : colors.danger, fontWeight: '700' }]}>
+                      {transaction.type === 'payment'
+                        ? 'Payment Received'
+                        : transaction.subType === 'opening'
+                        ? 'Opening Balance'
+                        : transaction.reason
+                        ? `Due: ${transaction.reason}`
+                        : 'New Due Added'}
+                    </Text>
+                  </View>
+                  <View style={styles.cardRow}>
+                    <Text style={[styles.cardLabel, { color: colors.textSecondary }]}>Transaction Amount</Text>
+                    <Text style={[styles.cardValue, { color: transaction.type === 'payment' ? colors.primary : colors.danger, fontWeight: '700' }]}>
+                      {transaction.type === 'payment' ? '-' : '+'}{formatINR(transaction.amount)}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+
               <View style={styles.cardRow}>
                 <Text style={[styles.cardLabel, { color: colors.textSecondary }]}>Current Due</Text>
                 <Text
@@ -462,31 +442,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: SPACING[2],
     marginTop: SPACING[2],
-  },
-  pillsScroll: {
-    flexDirection: 'row',
-    marginBottom: SPACING[3],
-  },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#f1f5f9',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  pillActive: {
-    backgroundColor: '#16a34a',
-    borderColor: '#16a34a',
-  },
-  pillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  pillTextActive: {
-    color: '#ffffff',
   },
   recipientCard: {
     backgroundColor: '#f8fafc',
