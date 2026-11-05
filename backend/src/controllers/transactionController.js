@@ -61,6 +61,76 @@ export async function createDue(req, res, next) {
 }
 
 /**
+ * Update an existing due transaction
+ * PATCH /api/customers/:id/dues/:dueId
+ */
+export async function updateDue(req, res, next) {
+  try {
+    const { id, dueId } = req.params;
+    const ownerUserId = req.userId;
+    const { amountPaise, reason, notes } = req.body;
+
+    // Verify customer exists and belongs to this user
+    const customer = await Customer.findOne({ _id: id, ownerUserId });
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: 'CUSTOMER_NOT_FOUND',
+        message: 'Customer not found or not accessible',
+      });
+    }
+
+    // Find existing due transaction belonging to this customer and user
+    const due = await DueTransaction.findOne({
+      _id: dueId,
+      customerId: customer._id,
+      ownerUserId,
+    });
+
+    if (!due) {
+      return res.status(404).json({
+        success: false,
+        error: 'DUE_NOT_FOUND',
+        message: 'Due transaction not found or not accessible',
+      });
+    }
+
+    if (amountPaise !== undefined) {
+      const parsedAmount = Math.round(amountPaise);
+      if (parsedAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'INVALID_AMOUNT',
+          message: 'Due amount must be greater than zero',
+        });
+      }
+      due.amountPaise = parsedAmount;
+    }
+
+    if (reason !== undefined && reason.trim()) {
+      due.reason = reason.trim();
+    }
+
+    if (notes !== undefined) {
+      due.notes = notes.trim();
+    }
+
+    due.updatedAt = new Date();
+    await due.save();
+
+    customer.updatedAt = new Date();
+    await customer.save();
+
+    res.json({
+      success: true,
+      data: due,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Record a payment for a customer
  * POST /api/customers/:id/payments
  */

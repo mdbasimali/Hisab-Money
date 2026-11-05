@@ -114,10 +114,37 @@ export async function syncBatch(req, res, next) {
             continue;
           }
 
-          // Idempotent upsert via clientTransactionId
+          // Idempotent upsert or update via clientTransactionId or backendId
           const clientTxId = payload.clientTransactionId || localId;
-          let due = await DueTransaction.findOne({ ownerUserId, clientTransactionId: clientTxId });
-          if (!due) {
+          const queryConditions = [{ clientTransactionId: clientTxId }];
+          if (payload.backendId && mongoose.Types.ObjectId.isValid(payload.backendId)) {
+            queryConditions.push({ _id: payload.backendId });
+          }
+
+          let due = await DueTransaction.findOne({
+            ownerUserId,
+            $or: queryConditions,
+          });
+
+          if (operation === 'UPDATE' && due) {
+            if (payload.amountPaise !== undefined) {
+              due.amountPaise = Math.round(payload.amountPaise);
+            }
+            if (payload.reason !== undefined && payload.reason.trim()) {
+              due.reason = payload.reason.trim();
+            }
+            if (payload.notes !== undefined) {
+              due.notes = payload.notes;
+            }
+            due.updatedAt = new Date();
+            await due.save();
+
+            // Touch customer updated_at
+            await Customer.updateOne(
+              { _id: customerId, ownerUserId },
+              { $set: { updatedAt: new Date() } }
+            );
+          } else if (!due) {
             due = await DueTransaction.create({
               ownerUserId,
               customerId,
@@ -127,6 +154,12 @@ export async function syncBatch(req, res, next) {
               transactionDate: payload.transactionDate ? new Date(payload.transactionDate) : new Date(),
               notes: payload.notes || '',
             });
+
+            // Touch customer updated_at
+            await Customer.updateOne(
+              { _id: customerId, ownerUserId },
+              { $set: { updatedAt: new Date() } }
+            );
           }
 
           results.push({

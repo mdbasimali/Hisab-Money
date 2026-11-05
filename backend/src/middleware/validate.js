@@ -65,6 +65,25 @@ export const createDueSchema = z.object({
 });
 
 /**
+ * Validate due transaction update
+ */
+export const updateDueSchema = z.object({
+  params: z.object({
+    id: objectIdSchema,
+    dueId: objectIdSchema,
+  }),
+  body: z.object({
+    amountPaise: z
+      .number({ invalid_type_error: 'amountPaise must be an integer' })
+      .int('amountPaise must be an integer')
+      .min(1, 'amountPaise must be greater than zero')
+      .optional(),
+    reason: z.string().max(200).optional(),
+    notes: z.string().max(1000).optional(),
+  }),
+});
+
+/**
  * Validate payment recording
  */
 export const createPaymentSchema = z.object({
